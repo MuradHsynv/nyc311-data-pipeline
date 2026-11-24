@@ -1,0 +1,17 @@
+# Secrets and local config: NEVER commit these
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local data and IDE
+data/
+*.log
+.vscode/
+.idea/

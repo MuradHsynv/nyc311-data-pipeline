@@ -538,9 +538,11 @@ Each exercise was done as real branches and pull requests on this repo.
 
 | # | Exercise | Owner | Pull requests |
 |---|---|---|---|
-| 1 | Resolve a merge conflict | Royal | TBD |
+| 1 | Resolve a merge conflict | Royal | #35 (conflict-a), #36 (conflict-b) |
 | 2 | Interactive rebase to clean up history | Sahin | #34 |
 | 3 | Revert a bad commit safely | Murad | #32 (bad commit), #33 (revert) |
+
+**Exercise 1: merge conflict.** Two branches (`git-exercise/conflict-a` and `git-exercise/conflict-b`) were created from the same `main` commit and edited line 1 of `docs/git_exercises.md` differently. `#35` (`conflict-a`) was merged into `main` first; then `main` was merged into `git-exercise/conflict-b`, triggering a content conflict. The conflict markers were resolved manually, committed, and merged in `#36`.
 
 **Exercise 2: interactive rebase.** The branch `git-exercise/rebase` was pushed with three messy commits (`wip`, `fix typo`, `more fixes`) so the untidy history is visible on the pull request. They were then squashed into one commit with `git rebase -i main` (`pick` the first, `squash` the other two, rewrite the message) and the branch was updated with `git push --force-with-lease`. `--force-with-lease` refuses to overwrite the remote branch if someone else pushed to it in the meantime, unlike a plain `--force`. Rebasing is only done on our own feature branch, never on `main`, because it rewrites commit hashes.
 

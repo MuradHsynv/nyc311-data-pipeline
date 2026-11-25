@@ -34,3 +34,14 @@ WHERE f.created_at = (
 SELECT DISTINCT ON (agency_sk) agency_sk, unique_key, created_at
 FROM gold.fact_service_requests
 ORDER BY agency_sk, created_at DESC;
+
+-- Q4 AFTER v2 (LATERAL): one index descent per agency_sk instead of reading the whole index
+SELECT a.agency_sk, x.unique_key, x.created_at
+FROM gold.dim_agency a
+CROSS JOIN LATERAL (
+    SELECT f.unique_key, f.created_at
+    FROM gold.fact_service_requests f
+    WHERE f.agency_sk = a.agency_sk
+    ORDER BY f.created_at DESC
+    LIMIT 1
+) x;

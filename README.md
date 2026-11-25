@@ -10,7 +10,7 @@ analytical SQL on top.
 | Name | Role |
 |---|---|
 | Murad Huseynov | _TBD_ |
-| Royal Esgerov | _TBD_ |
+| Royal Esgerov | #1 Ingestion & Silver: Socrata API client, resumable bronze ingestion, schema drift detection, validation, quarantine, quality gate, silver layer |
 | Sahin Bedelov | #2 Database: migrations, gold star schema, SCD2, idempotent loads, analytics, performance |
 
 ## Quick start
@@ -157,7 +157,32 @@ name and history would be lost. With SCD2, each change adds a **new version row*
 
 ## Data quality rules
 
-> TODO: table of rule name, description, action (quarantine / fail run)
+Every bronze record for a run is validated in `src/pipeline/validate.py` before anything is
+written to silver. Invalid records are never dropped silently—they are written to
+`ops.quarantine` with the `rule_name`, human-readable `reason`, and raw JSON payload.
+
+| Rule name | What it checks | Action |
+|---|---|---|
+| `required_field_missing` | `unique_key`, `created_date`, `agency`, `complaint_type`, and `status` are present and non-empty | Quarantine |
+| `invalid_created_date` | `created_date` parses as a valid ISO timestamp | Quarantine |
+| `created_in_future` | `created_date` is not later than the current time | Quarantine |
+| `invalid_closed_date` | `closed_date`, when present, parses as a valid ISO timestamp | Quarantine |
+| `closed_before_created` | `closed_date` is not earlier than `created_date` | Quarantine |
+| `invalid_status` | `status` is in the verified `ALLOWED_STATUS` set | Quarantine |
+| `coordinates_out_of_range` | `latitude` and `longitude`, when present, are numeric and inside the NYC bounding box (`40.3..41.1`, `-74.5..-73.5`) | Quarantine |
+
+### Quality gate
+
+`src/pipeline/silver.py` tracks the invalid ratio (`invalid / total`) across the run and
+compares it against `QUALITY_FAIL_THRESHOLD` (default `0.05`, or 5%).
+
+- **Two separate DB connections (`silver_conn` and `quarantine_conn`):** silver upserts
+  stay inside one open transaction on `silver_conn`, while quarantined rows are committed
+  immediately on `quarantine_conn`.
+- **When the gate trips (`ratio > threshold`):** `silver_conn` is rolled back so nothing
+  is published to silver or gold, `QualityGateError` is raised, the run is marked `failed`
+  in `ops.pipeline_runs`, and all quarantined rows remain in `ops.quarantine` for
+  investigation.
 
 ## Idempotency and resumability
 
@@ -190,7 +215,34 @@ agency rename does not create a third version.
 
 ### Resumability
 
-> TODO (#1): ops.ingestion_state checkpoints, batch plus checkpoint in one transaction
+Ingestion checkpoints are stored in `ops.ingestion_state` keyed by `(source, window_key)`
+(for example `('nyc311', '2025-01-01|2025-02-01')`), tracking `next_offset` and `status`
+(`in_progress` or `complete`).
+
+- **Single-transaction batch + checkpoint:** in `src/pipeline/ingest.py`, upserting a page
+  into `bronze.requests_raw` and advancing `next_offset` in `ops.ingestion_state` happen
+  inside one PostgreSQL transaction. If the container is killed mid-run, either both
+  committed or neither did.
+- **`in_progress` vs `complete`:**
+  - If no state exists yet, ingestion starts at offset `0`.
+  - If the window is `in_progress`, a previous run died mid-window—ingestion resumes from
+    the saved `next_offset`, and `_adopt_interrupted_rows` re-tags bronze rows from earlier
+    failed runs of the same window with the new `run_id` so silver and gold process the
+    complete window.
+  - If the window is `complete`, restarting that window resets `next_offset` to `0` and
+    refreshes it cleanly via idempotent upserts.
+
+### API change detection
+
+Because Socrata omits null fields from individual JSON records, schema drift cannot be
+judged per record. `src/pipeline/schema_check.py` inspects the **union of keys across an
+entire page**:
+
+- **Breaking change (fails the run):** if any core column (`unique_key`, `created_date`,
+  `agency`, `complaint_type`, `status`) is absent from the entire page, `check_schema`
+  raises `SchemaDriftError` and aborts the run.
+- **Non-breaking addition (warning only):** if a new column appears outside
+  `KNOWN_COLUMNS`, a warning is logged and ingestion continues.
 
 ## Backfill and incremental runs
 

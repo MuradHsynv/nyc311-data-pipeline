@@ -33,6 +33,7 @@ services:
         condition: service_healthy
     command: python -m pipeline.scheduler
     restart: unless-stopped
+    profiles: [ 'scheduler' ] # only starts when you ask for it by name
 
 volumes:
   pgdata:

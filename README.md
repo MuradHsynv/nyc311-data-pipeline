@@ -206,4 +206,15 @@ agency rename does not create a third version.
 
 ## Performance report
 
-> TODO: link to docs/performance_report.md
+Full report with BEFORE and AFTER plans: [docs/performance_report.md](docs/performance_report.md).
+Measured on 1,452,144 fact rows (January to May 2025), warm runs:
+
+| Query | Fix | Before | After | Speedup |
+|---|---|---|---|---|
+| Q1 requests in one month | index `(created_date_key)` | 36.6 ms | 9.5 ms | 3.8x |
+| Q2 recent open requests | index `(status, created_at)` | 41.2 ms | 0.106 ms | 388x |
+| Q3 top complaint types for one agency | index `(agency_sk, complaint_type_sk)` | 30.9 ms | 1.86 ms | 16.6x |
+| Q4 latest request per agency | `LATERAL` rewrite + index `(agency_sk, created_at DESC)` | > 10 min (cancelled) | 0.108 ms | > 5,000,000x |
+
+A partitioning experiment (monthly range partitions on a copy) is also in the report, with the
+reason the main table stays unpartitioned.

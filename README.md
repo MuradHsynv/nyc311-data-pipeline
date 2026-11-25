@@ -523,6 +523,29 @@ Measured on 1,452,144 fact rows (January to May 2025), warm runs:
 
 A partitioning experiment (monthly range partitions on a copy) is also documented in the report, along with why the main fact table stays unpartitioned (preserving `ON CONFLICT (unique_key)` without altering the primary key to `(unique_key, created_at)`).
 
+## Git workflow and exercises
+
+### Workflow
+
+- `main` is protected: no direct pushes, every change goes through a pull request with at least one approval and green CI (`lint-test`, `docker-build`).
+- One branch per task, named by type: `feat/`, `fix/`, `docs/`, `test/`, `perf/`, `chore/`, `git-exercise/`.
+- Commit messages follow `type: short imperative summary` (for example `feat: add gold loader`).
+- Secrets never enter the repo: `.env` is gitignored, `.env.example` holds placeholders, and pre-commit runs `detect-secrets`.
+
+### Exercises
+
+Each exercise was done as real branches and pull requests on this repo.
+
+| # | Exercise | Owner | Pull requests |
+|---|---|---|---|
+| 1 | Resolve a merge conflict | Royal | TBD |
+| 2 | Interactive rebase to clean up history | Sahin | #34 |
+| 3 | Revert a bad commit safely | Murad | #32 (bad commit), #33 (revert) |
+
+**Exercise 2: interactive rebase.** The branch `git-exercise/rebase` was pushed with three messy commits (`wip`, `fix typo`, `more fixes`) so the untidy history is visible on the pull request. They were then squashed into one commit with `git rebase -i main` (`pick` the first, `squash` the other two, rewrite the message) and the branch was updated with `git push --force-with-lease`. `--force-with-lease` refuses to overwrite the remote branch if someone else pushed to it in the meantime, unlike a plain `--force`. Rebasing is only done on our own feature branch, never on `main`, because it rewrites commit hashes.
+
+**Exercise 3: revert.** A deliberate bad commit was merged to `main` in #32, then undone in #33 with `git revert`, which adds a new commit that inverts the change. `main` history is not rewritten, so nobody else's clone breaks.
+
 ## Project layout
 
 ```text

@@ -1,12 +1,17 @@
-"""Pure validation and type-coercion rules for Bronze -> Silver NYC 311 records."""
+"""Row-level validation rules. Returns violations instead of raising, so callers can quarantine."""
 
+from dataclasses import dataclass
 from datetime import datetime
 
-# Live statuses observed in docs/api_samples.md ($group=status).
+REQUIRED_FIELDS = ("unique_key", "created_date", "agency", "complaint_type", "status")
+
+# Verified against live NYC 311 API ($group=status in docs/api_samples.md).
 ALLOWED_STATUS = {
     "Assigned",
     "Cancel",
     "Closed",
+    "Draft",
+    "Email Sent",
     "In Progress",
     "Open",
     "Pending",
@@ -14,134 +19,75 @@ ALLOWED_STATUS = {
     "Unspecified",
 }
 
-REQUIRED_FIELDS = (
-    "unique_key",
-    "created_date",
-    "agency",
-    "complaint_type",
-    "status",
-)
-
-# Bounding box covering all five NYC boroughs.
-NYC_LAT_MIN, NYC_LAT_MAX = 40.4, 41.0
-NYC_LON_MIN, NYC_LON_MAX = -74.3, -73.6
+# Rough bounding box of New York City.
+LAT_RANGE = (40.3, 41.1)
+LON_RANGE = (-74.5, -73.5)
 
 
-def _clean_str(value):
-    """Return stripped string, or None if missing/blank."""
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
+@dataclass(frozen=True)
+class Violation:
+    """One failed rule: a short machine name plus a human-readable reason."""
+
+    rule_name: str
+    reason: str
 
 
-def _parse_timestamp(value):
-    """Parse an ISO-8601 timestamp into a naive datetime, or return None on failure."""
-    text = _clean_str(value)
-    if text is None:
-        return None
-    try:
-        dt = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    # Silver timestamp columns are timezone-naive; normalize to avoid naive/aware comparisons.
-    return dt.replace(tzinfo=None)
-
-
-def _parse_float(value):
-    """Parse a coordinate value into float, or return None on failure."""
-    text = _clean_str(value)
-    if text is None:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
+def _parse_ts(value):
+    """Parse a Socrata floating timestamp such as 2025-01-02T10:00:00.000."""
+    return datetime.fromisoformat(str(value)).replace(tzinfo=None)
 
 
 def validate_record(raw):
-    """Validate and coerce one raw Socrata JSON dict for silver.service_requests.
+    """Return a list of Violations for one raw record (empty list = valid)."""
+    violations = []
 
-    Returns:
-        (cleaned_dict, []) when valid.
-        (None, [(rule_name, reason), ...]) when one or more rules fail.
-    """
-    errors = []
+    # Rule: required fields
+    for field in REQUIRED_FIELDS:
+        if not str(raw.get(field) or "").strip():
+            violations.append(Violation("required_field_missing", f"{field} is missing or empty"))
 
-    # 1. Required fields must be present and non-empty.
-    missing = [field for field in REQUIRED_FIELDS if _clean_str(raw.get(field)) is None]
-    if missing:
-        errors.append(("missing_required", "missing required fields: " + ", ".join(missing)))
+    # Rules: created_date
+    created = None
+    if raw.get("created_date"):
+        try:
+            created = _parse_ts(raw["created_date"])
+            if created > datetime.now():
+                violations.append(Violation("created_in_future", "created_date is in the future"))
+        except (ValueError, TypeError):
+            violations.append(Violation("invalid_created_date", "cannot parse created_date"))
 
-    # 2. Timestamps: created_date is required; closed_date is optional.
-    created_dt = None
-    raw_created = _clean_str(raw.get("created_date"))
-    if raw_created is not None:
-        created_dt = _parse_timestamp(raw_created)
-        if created_dt is None:
-            errors.append(("invalid_created_date", f"unparseable created_date: {raw_created!r}"))
+    # Rules: closed_date and ordering
+    closed = None
+    if raw.get("closed_date"):
+        try:
+            closed = _parse_ts(raw["closed_date"])
+        except (ValueError, TypeError):
+            violations.append(Violation("invalid_closed_date", "cannot parse closed_date"))
 
-    closed_dt = None
-    raw_closed = _clean_str(raw.get("closed_date"))
-    if raw_closed is not None:
-        closed_dt = _parse_timestamp(raw_closed)
-        if closed_dt is None:
-            errors.append(("invalid_closed_date", f"unparseable closed_date: {raw_closed!r}"))
-
-    # 3. Date consistency: closed_date cannot be earlier than created_date.
-    if created_dt is not None and closed_dt is not None and closed_dt < created_dt:
-        errors.append(
-            (
+    if created and closed and closed < created:
+        violations.append(
+            Violation(
                 "closed_before_created",
-                f"closed_date ({closed_dt.isoformat()}) < created_date ({created_dt.isoformat()})",
+                "closed_date is earlier than created_date",
             )
         )
 
-    # 4. Status must match known NYC 311 values.
-    status = _clean_str(raw.get("status"))
-    if status is not None and status not in ALLOWED_STATUS:
-        errors.append(("invalid_status", f"unexpected status: {status!r}"))
+    # Rule: status enum
+    status = raw.get("status")
+    if status and status not in ALLOWED_STATUS:
+        violations.append(Violation("invalid_status", f"unexpected status: {status}"))
 
-    # 5. Coordinates: both null is valid; otherwise both must be floats inside NYC bounds.
-    raw_lat = _clean_str(raw.get("latitude"))
-    raw_lon = _clean_str(raw.get("longitude"))
-    lat = None
-    lon = None
-    if raw_lat is not None or raw_lon is not None:
-        lat = _parse_float(raw_lat)
-        lon = _parse_float(raw_lon)
-        if lat is None or lon is None:
-            errors.append(
-                (
-                    "invalid_coordinates",
-                    f"incomplete or non-numeric coordinates: lat={raw_lat!r}, lon={raw_lon!r}",
+    # Rule: coordinates (only checked when present)
+    for field, (low, high) in (("latitude", LAT_RANGE), ("longitude", LON_RANGE)):
+        if raw.get(field) not in (None, ""):
+            try:
+                value = float(raw[field])
+            except (ValueError, TypeError):
+                violations.append(Violation("coordinates_out_of_range", f"{field} is not a number"))
+                continue
+            if not low <= value <= high:
+                violations.append(
+                    Violation("coordinates_out_of_range", f"{field} outside NYC bounds")
                 )
-            )
-        elif not (NYC_LAT_MIN <= lat <= NYC_LAT_MAX and NYC_LON_MIN <= lon <= NYC_LON_MAX):
-            errors.append(
-                (
-                    "invalid_coordinates",
-                    f"coordinates outside NYC bounds: lat={lat}, lon={lon}",
-                )
-            )
 
-    if errors:
-        return None, errors
-
-    cleaned = {
-        "unique_key": _clean_str(raw.get("unique_key")),
-        "created_date": created_dt,
-        "closed_date": closed_dt,
-        "agency": _clean_str(raw.get("agency")),
-        "agency_name": _clean_str(raw.get("agency_name")),
-        "complaint_type": _clean_str(raw.get("complaint_type")),
-        "descriptor": _clean_str(raw.get("descriptor")),
-        "status": status,
-        "borough": _clean_str(raw.get("borough")),
-        "city": _clean_str(raw.get("city")),
-        "incident_zip": _clean_str(raw.get("incident_zip")),
-        "latitude": lat,
-        "longitude": lon,
-        "open_data_channel_type": _clean_str(raw.get("open_data_channel_type")),
-    }
-    return cleaned, []
+    return violations

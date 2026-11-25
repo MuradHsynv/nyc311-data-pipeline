@@ -1,0 +1,36 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-test:                      # this job name becomes the required status check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pipeline
+          POSTGRES_PASSWORD: ci_only_password   # throwaway CI database, not a real secret
+          POSTGRES_DB: nyc311
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U pipeline -d nyc311'
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_USER: pipeline
+      POSTGRES_PASSWORD: ci_only_password
+      POSTGRES_DB: nyc311
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q

@@ -1,0 +1,19 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace    # strips spaces at line ends
+      - id: end-of-file-fixer      # every file ends with exactly one newline
+      - id: check-yaml             # catches broken YAML (compose, CI workflow)
+      - id: check-added-large-files
+      - id: detect-private-key     # blocks committed SSH or TLS private keys
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4                    # same version as requirements-dev.txt
+    hooks:
+      - id: ruff                   # lint, with auto-fix
+        args: [--fix]
+      - id: ruff-format            # formatting, the same check CI runs
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets         # blocks passwords and tokens that look like secrets

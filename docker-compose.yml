@@ -16,6 +16,15 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+  pipeline:
+    # one-off runs: docker compose run --rm pipeline ...
+    build: .
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy # wait for the database healthcheck
+    command: python -m pipeline.cli --mode incremental
+    profiles: [ 'manual' ] # not started by a plain `docker compose up`
 
 volumes:
   pgdata:

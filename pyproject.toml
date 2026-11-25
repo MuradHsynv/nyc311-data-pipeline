@@ -1,0 +1,12 @@
+[tool.ruff]
+line-length = 100
+src = ['src']            # tells ruff that 'pipeline' is our own package (fixes import sorting)
+target-version = 'py311'
+
+[tool.ruff.lint]
+select = ['E', 'F', 'I', 'B']   # style errors, pyflakes, import order, common bugs
+ignore = ['E501']               # long lines are handled by the formatter instead
+
+[tool.pytest.ini_options]
+pythonpath = ['src']     # lets tests do 'from pipeline import ...'
+testpaths = ['tests']

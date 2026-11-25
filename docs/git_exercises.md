@@ -1,1 +1,1 @@
-Exercise 1: change from branch B
+Exercise 1: resolved merge conflict between branch A and branch B

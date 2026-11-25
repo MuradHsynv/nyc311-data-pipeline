@@ -11,7 +11,7 @@ analytical SQL on top.
 |---|---|
 | Murad Huseynov | _TBD_ |
 | Royal Esgerov | _TBD_ |
-| Sahin Bedelov | _TBD_ |
+| Sahin Bedelov | #2 Database: migrations, gold star schema, SCD2, idempotent loads, analytics, performance |
 
 ## Quick start
 

@@ -12,7 +12,7 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_USER: pipeline
-          POSTGRES_PASSWORD: ci_only_password   # throwaway CI database, not a real secret
+          POSTGRES_PASSWORD: ci_only_password   # pragma: allowlist secret
           POSTGRES_DB: nyc311
         ports:
           - 5432:5432
@@ -24,7 +24,7 @@ jobs:
     env:
       POSTGRES_HOST: localhost
       POSTGRES_USER: pipeline
-      POSTGRES_PASSWORD: ci_only_password
+      POSTGRES_PASSWORD: ci_only_password   # pragma: allowlist secret
       POSTGRES_DB: nyc311
     steps:
       - uses: actions/checkout@v4
@@ -36,3 +36,8 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t nyc311-pipeline .

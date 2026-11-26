@@ -1,4 +1,5 @@
 import pytest
+import requests
 from tenacity import wait_none
 
 from pipeline.api_client import SocrataClient
@@ -51,3 +52,24 @@ def test_fetch_page_does_not_retry_on_400(monkeypatch):
     monkeypatch.setattr(client.session, "get", lambda *a, **k: FakeResponse(400))
     with pytest.raises(RuntimeError):
         client.fetch_page(0)
+
+
+def test_fetch_page_retries_on_incomplete_read(monkeypatch):
+    """A truncated response (the April failure) must be retried, not crash the run."""
+    monkeypatch.setattr(SocrataClient.fetch_page.retry, "wait", wait_none())
+    client = SocrataClient("abc")
+    items = iter(
+        [
+            requests.exceptions.ChunkedEncodingError("IncompleteRead"),
+            FakeResponse(200, [{"unique_key": "1"}]),
+        ]
+    )
+
+    def fake_get(*args, **kwargs):
+        item = next(items)
+        if isinstance(item, Exception):
+            raise item  # simulate the connection dying mid-response
+        return item
+
+    monkeypatch.setattr(client.session, "get", fake_get)
+    assert client.fetch_page(0) == [{"unique_key": "1"}]

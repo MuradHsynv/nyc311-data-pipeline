@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from pipeline.config import load_settings
@@ -13,7 +15,14 @@ TABLES = (
 
 @pytest.fixture
 def settings():
-    return load_settings()
+    s = load_settings()
+    # These fixtures TRUNCATE every table, so refuse to run against a real database.
+    # GitHub Actions sets CI=true, and its throwaway database is called nyc311.
+    if not s.db_name.endswith("_test") and not os.getenv("CI"):
+        pytest.exit(
+            f"Refusing to truncate '{s.db_name}'. Use POSTGRES_DB=nyc311_test.", returncode=2
+        )
+    return s
 
 
 @pytest.fixture

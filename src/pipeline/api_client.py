@@ -52,7 +52,9 @@ class SocrataClient:
 
         try:
             resp = self.session.get(self.url, params=params, timeout=self.timeout)
-        except (requests.ConnectionError, requests.Timeout) as exc:
+        except requests.exceptions.RequestException as exc:
+            # Covers ConnectionError, Timeout, ChunkedEncodingError (IncompleteRead), ContentDecodingError.
+            # HTTP error statuses are raised later by raise_for_status, so they are not affected.
             raise RetryableAPIError(f"network error: {exc}") from exc
 
         if resp.status_code == 429:

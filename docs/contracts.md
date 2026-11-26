@@ -137,6 +137,7 @@ def run_pipeline(settings, mode, date_from=None, date_to=None):
 ## 5. Dataset Facts and Gotchas
 
 - **Endpoint:** `https://data.cityofnewyork.us/resource/erm2-nwe9.json`
-- **Pagination:** `$limit`, `$offset`, with stable `$order=created_date, unique_key`. - **Window filter:** `$where=created_date >= '2025-01-01T00:00:00' AND created_date < '2025-02-01T00:00:00'` (upper bound exclusive).
+- **Pagination:** `$limit`, `$offset`, with stable `$order=created_date, unique_key`.
+- **Window filter:** `$where=created_date >= '2025-01-01T00:00:00' AND created_date < '2025-02-01T00:00:00'` (upper bound exclusive).
 - **Timestamps:** Floating timestamps without timezone (e.g. `2025-01-02T10:00:00.000`), stored as `TIMESTAMP`.
 - **Omitted null fields:** Socrata omits null attributes from individual JSON objects; always access optional keys via `.get()`.

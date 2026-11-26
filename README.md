@@ -161,7 +161,7 @@ flowchart LR
 |---|---|
 | **CLI (`pipeline.cli`)** | Supports `--mode incremental` and `--mode backfill --from YYYY-MM-DD --to YYYY-MM-DD` (validating date format and `--from < --to`). Exits `0` on success and `1` on failure so Docker and CI detect failures immediately. |
 | **Scheduler (`pipeline.scheduler`)** | Uses APScheduler `BlockingScheduler` with `CronTrigger.from_crontab(SCHEDULE_CRON)`, `max_instances=1`, `coalesce=True`, and an immediate startup execution. Exceptions are caught and logged inside `job()` so transient API/DB errors never crash the container. Chosen over Airflow to avoid multi-container scheduler/worker/metadata overhead for a single-DAG cron workload. |
-| **Docker image (`Dockerfile`)** | Two-stage build on `python:3.11-slim`: Stage 1 installs runtime dependencies (`requirements.txt`) into `/install`; Stage 2 copies `/install`, `src/`, `migrations/`, and `queries/` into a clean runtime image running as non-root user `app` (`uid` system user), with `.env` excluded via `.dockerignore` and a Python `HEALTHCHECK` verifying module imports and DB connectivity. |
+| **Docker image (`Dockerfile`)** | Two-stage build on `python:3.11-slim`: Stage 1 installs runtime dependencies (`requirements.txt`) into `/install`; Stage 2 copies `/install`, `src/` and `migrations/` into a clean runtime image that runs as the non-root system user `app` (`uid` system user), with `.env` excluded via `.dockerignore` and a Python `HEALTHCHECK` verifying module imports and DB connectivity. |
 | **Docker Compose (`docker-compose.yml`)** | Runs `postgres:16` with named volume `pgdata` and a `pg_isready` healthcheck (`5s` interval, `10` retries). `pipeline` (`profiles: ["manual"]`) and `scheduler` (`profiles: ["scheduler"]`) both declare `depends_on: postgres: condition: service_healthy`. |
 | **CI/CD (`.github/workflows/ci.yml`)** | Runs on every pull request and push to `main`: `lint-test` (required status check on `main` running `ruff check`, `ruff format --check`, and `pytest -q` against a `postgres:16` service container) and `docker-build` (verifying the multi-stage image builds cleanly). |
 | **Pre-commit (`.pre-commit-config.yaml`)** | Enforces trailing-whitespace removal, EOF newlines, YAML syntax checks, large-file blocking, private-key detection, `ruff --fix`, `ruff-format`, and `detect-secrets`. |
@@ -458,6 +458,9 @@ $ docker kill pipe-demo
 --------------+---------------------
       1759143 |             1759143
 ```
+Note: this demo loaded June 2025 into the same database, so Bronze grew from 1,452,654 rows (the benchmark dataset above) to 1,759,143 (+306,489). The dataset table and the performance report use the original 1,452,144 gold rows.
+
+`rows_ingested` counts only the rows fetched by that invocation (296,489 here). The 10,000 rows loaded before the crash were adopted by the resumed run, which is why `rows_silver` (306,432) is higher.
 
 ### Demo B: Database not ready at startup (two layers of protection)
 
